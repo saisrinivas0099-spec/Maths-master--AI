@@ -5,6 +5,16 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from io import BytesIO
 from xml.sax.saxutils import escape
+import re
+from io import BytesIO
+
+import matplotlib
+matplotlib.use("Agg")
+
+from matplotlib import mathtext
+from matplotlib.font_manager import FontProperties
+
+from reportlab.platypus import Image
 
 def make_pdf(title, questions):
     buf=BytesIO()

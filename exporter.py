@@ -29,4 +29,32 @@ def make_pdf(title, questions):
         story.append(Paragraph(f"<b>Solution:</b> {escape(q['solution'])}",styles["BodyText"]))
         story.append(Spacer(1,6))
     doc.build(story)
+    def latex_to_pdf_image(latex, max_width=450):
+    # Remove LaTeX delimiters
+    latex = latex.strip()
+    latex = latex.replace("$$", "")
+    latex = latex.replace("$", "")
+    latex = latex.replace(r"\(", "")
+    latex = latex.replace(r"\)", "")
+    latex = latex.replace(r"\[", "")
+    latex = latex.replace(r"\]", "")
+
+    buffer = BytesIO()
+
+    width, height = mathtext.math_to_image(
+        latex,
+        buffer,
+        dpi=200,
+        format="png",
+        prop=FontProperties(size=14)
+    )
+
+    buffer.seek(0)
+
+    scale = min(max_width / width, 1)
+    return Image(
+        buffer,
+        width=width * scale,
+        height=height * scale
+    )
     return buf.getvalue()

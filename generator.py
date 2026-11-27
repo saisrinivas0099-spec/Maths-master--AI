@@ -1,71 +1,80 @@
-import random
-from sympy import symbols, integrate, diff, simplify
+import json, re
+import streamlit as st
+from google import genai
+from google.genai import types
 
-x = symbols("x")
+class GeminiConfigError(Exception): pass
+class GeminiGenerationError(Exception): pass
 
-def _demo_bank(chapter):
-    bank = []
-    if chapter in ("Differentiation", "Applications of Derivatives"):
-        bank = [
-            ("Find the derivative of x^3 - 4x^2 + 5x - 7.", "3*x**2 - 8*x + 5",
-             "Differentiate term by term using d(x^n)/dx = n*x^(n-1). Therefore, the derivative is 3x² - 8x + 5."),
-            ("Differentiate sin(x) + cos(x).", "cos(x) - sin(x)",
-             "Using d(sin x)/dx = cos x and d(cos x)/dx = -sin x, the result is cos x - sin x."),
-        ]
-    elif chapter in ("Integration", "Definite Integrals"):
-        bank = [
-            ("Evaluate ∫(3x² + 2x + 1) dx.", "x³ + x² + x + C",
-             "Integrate term by term: ∫3x² dx = x³, ∫2x dx = x², and ∫1 dx = x. Add the constant C."),
-            ("Evaluate ∫cos(x) dx.", "sin(x) + C",
-             "Since the derivative of sin(x) is cos(x), the integral is sin(x) + C."),
-        ]
-    elif chapter == "Matrices":
-        bank = [
-            ("If A = [[1, 2], [3, 4]], find det(A).", "-2",
-             "For a 2×2 matrix [[a,b],[c,d]], det(A)=ad-bc. Here, 1×4 - 2×3 = 4 - 6 = -2."),
-            ("What is the order of a matrix having 3 rows and 2 columns?", "3 × 2",
-             "The order of a matrix is written as number of rows × number of columns. Hence, the order is 3 × 2."),
-        ]
-    elif chapter == "Complex Numbers":
-        bank = [
-            ("Simplify (3 + 2i) + (1 - 5i).", "4 - 3i",
-             "Add real parts and imaginary parts separately: (3+1) + (2i-5i) = 4-3i."),
-            ("Find i².", "-1",
-             "By the definition of the imaginary unit i, i² = -1."),
-        ]
-    elif chapter in ("Straight Lines",):
-        bank = [
-            ("Find the slope of the line 2x + 3y - 6 = 0.", "-2/3",
-             "Write the equation as 3y = -2x + 6, so y = (-2/3)x + 2. The slope is -2/3."),
-        ]
-    elif chapter in ("Probability",):
-        bank = [
-            ("A fair die is rolled once. Find the probability of getting an even number.", "1/2",
-             "The sample space is {1,2,3,4,5,6}. Even outcomes are {2,4,6}. Thus P(E)=3/6=1/2."),
-        ]
-    else:
-        bank = [
-            (f"State the main mathematical idea used in {chapter}.", "Depends on the relevant theorem or definition.",
-             f"Identify the definitions and standard results in {chapter}. Apply the relevant theorem, show each algebraic step, and verify the final result.")
-        ]
-    return bank
+def secret(name, default=None):
+    try: return st.secrets.get(name, default)
+    except Exception: return default
 
 def generate_questions(year, subject, chapter, count, qtypes, difficulty):
-    bank = _demo_bank(chapter)
-    result = []
-    for i in range(count):
-        base = bank[i % len(bank)]
-        qtype = qtypes[i % len(qtypes)]
-        level = difficulty if difficulty != "Mixed" else ["Easy", "Medium", "Hard"][i % 3]
-        question, answer, solution = base
-        # Do not disguise repeated demo questions as new questions.
-        if i >= len(bank):
-            question = f"Practice variation {i+1}: {question}"
-        options = []
-        if qtype == "MCQ":
-            options = [f"(A) {answer}", "(B) 0", "(C) 1", "(D) None of these"]
-        result.append({
-            "type": qtype, "question": question, "answer": answer,
-            "solution": solution, "difficulty": level, "options": options
-        })
-    return result
+    api_key=secret("GEMINI_API_KEY")
+    if not api_key:
+        raise GeminiConfigError('API key missing. In Streamlit Cloud open Manage app → Settings → Secrets and add GEMINI_API_KEY = "your_key". Never put the key in GitHub.')
+    model=secret("GEMINI_MODEL","gemini-3.8-flash")
+    prompt=f"""
+Act as an expert TG/AP Intermediate Mathematics question setter.
+Create exactly {count} UNIQUE, mathematically meaningful questions.
+Year: {year}
+Subject: {subject}
+Chapter: {chapter}
+Allowed types: {", ".join(qtypes)}
+Difficulty: {difficulty}
+Language: English.
+
+Rules:
+- Stay within this chapter and Intermediate level.
+- Do not claim questions are PYQs or add fake exam years.
+- No duplicates or superficial number-only variations.
+- Distribute requested types as evenly as possible.
+- MCQ must have exactly four options labelled (A)-(D), one correct answer.
+- Non-MCQ options must be [].
+- Give correct final answers and detailed step-by-step solutions.
+- If unsure, replace the question rather than guessing.
+Return JSON only:
+{{"questions":[{{"type":"MCQ","question":"...","options":["(A) ...","(B) ...","(C) ...","(D) ..."],"answer":"...","solution":"...","difficulty":"Easy/Medium/Hard"}}]}}
+Use only these types: {", ".join(qtypes)}.
+"""
+    try:
+        client=genai.Client(api_key=api_key)
+        response=client.models.generate_content(
+            model=model, contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.45,response_mime_type="application/json")
+        )
+    except Exception as e:
+        msg=str(e)
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            raise GeminiGenerationError("Gemini free-tier request limit reached. Wait and try again, or check your Google AI Studio quota.")
+        raise GeminiGenerationError("Gemini API request failed: "+msg)
+    raw=(response.text or "").strip()
+    raw=re.sub(r"^```(?:json)?\s*|\s*```$","",raw)
+    a,b=raw.find("{"),raw.rfind("}")
+    if a<0 or b<=a: raise GeminiGenerationError("Gemini did not return valid JSON. Please try again.")
+    try: data=json.loads(raw[a:b+1])
+    except Exception as e: raise GeminiGenerationError("Could not parse AI response: "+str(e))
+    out=[]; seen=set()
+    for q in data.get("questions",[]):
+        if not isinstance(q,dict): continue
+        typ=str(q.get("type","")).upper()
+        question=str(q.get("question","")).strip()
+        answer=str(q.get("answer","")).strip()
+        solution=str(q.get("solution","")).strip()
+        if typ not in qtypes or not question or not answer or not solution: continue
+        key=re.sub(r"\W+","",question.lower())
+        if key in seen: continue
+        seen.add(key)
+        opts=q.get("options",[])
+        if typ=="MCQ":
+            if not isinstance(opts,list) or len(opts)!=4: continue
+            opts=[str(x) for x in opts]
+        else: opts=[]
+        level=str(q.get("difficulty","Medium")).title()
+        if level not in ("Easy","Medium","Hard"): level="Medium"
+        out.append({"type":typ,"question":question,"options":opts,"answer":answer,"solution":solution,"difficulty":level})
+        if len(out)==count: break
+    if len(out)<count:
+        raise GeminiGenerationError(f"Gemini returned only {len(out)} valid unique questions out of {count}. No repeated filler questions were added. Try a smaller set or try again.")
+    return out

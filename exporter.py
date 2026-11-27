@@ -5,6 +5,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from io import BytesIO
 from xml.sax.saxutils import escape
+from equation_renderer import latex_to_pdf_image
 
 def make_pdf(title, questions):
     buf=BytesIO()

@@ -34,6 +34,17 @@ Rules:
 - Non-MCQ options must be [].
 - Give correct final answers and detailed step-by-step solutions.
 - If unsure, replace the question rather than guessing.
+MATHEMATICAL FORMATTING RULES:
+1. Write every mathematical expression in valid LaTeX.
+2. Use \frac{}{} for fractions.
+3. Use \sqrt{} for square roots.
+4. Use ^{} for powers.
+5. Use _{} for subscripts.
+6. Use \int for integration.
+7. Use \lim for limits.
+8. Use \sum for summations.
+9. Do not use plain-text approximations of mathematical equations.
+10. Return equations as LaTeX strings.
 Return JSON only:
 {{"questions":[{{"type":"MCQ","question":"...","options":["(A) ...","(B) ...","(C) ...","(D) ..."],"answer":"...","solution":"...","difficulty":"Easy/Medium/Hard"}}]}}
 Use only these types: {", ".join(qtypes)}.

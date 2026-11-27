@@ -47,7 +47,3 @@ if "questions" in st.session_state:
                        file_name="maths_master_ai_questions.pdf",mime="application/pdf",use_container_width=True)
 st.divider()
 st.caption("Maths Master AI · AI-assisted draft content · Verify syllabus alignment and calculations before publication.")
-from exporter import generate_pdf
-
-pdf_buffer = generate_pdf(questions_list, title="Intermediate 1st Year - Mathematics IA")
-st.download_button("Download PDF", data=pdf_buffer, file_name="questions.pdf", mime="application/pdf")
